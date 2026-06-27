@@ -1,0 +1,91 @@
+---
+import Layout from '../layouts/Layout.astro';
+import ProgressTable from '../components/ProgressTable.astro';
+import { getProgressEntries } from '../data/progress-sample';
+
+const entries = await getProgressEntries();
+
+const totalMinutes = entries.reduce((sum, e) => sum + e.durationMinutes, 0);
+const avgUnderstanding =
+	entries.length > 0
+		? (entries.reduce((sum, e) => sum + e.understanding, 0) / entries.length).toFixed(1)
+		: '—';
+---
+
+<Layout>
+	<main class="container">
+		<h1>学習進捗ダッシュボード</h1>
+
+		<section class="summary">
+			<div class="stat-card">
+				<span class="stat-label">記録件数</span>
+				<span class="stat-value">{entries.length} 件</span>
+			</div>
+			<div class="stat-card">
+				<span class="stat-label">合計学習時間</span>
+				<span class="stat-value">{totalMinutes} 分</span>
+			</div>
+			<div class="stat-card">
+				<span class="stat-label">平均理解度</span>
+				<span class="stat-value">{avgUnderstanding} / 5</span>
+			</div>
+		</section>
+
+		<section class="table-section">
+			<h2>学習記録</h2>
+			{entries.length > 0 ? (
+				<ProgressTable entries={entries} />
+			) : (
+				<p class="empty">まだ記録がありません。</p>
+			)}
+		</section>
+	</main>
+</Layout>
+
+<style>
+	.container {
+		max-width: 900px;
+		margin: 2rem auto;
+		padding: 0 1rem;
+		font-family: sans-serif;
+	}
+	h1 {
+		font-size: 1.6rem;
+		margin-bottom: 1.5rem;
+	}
+	h2 {
+		font-size: 1.2rem;
+		margin-bottom: 0.75rem;
+	}
+	.summary {
+		display: flex;
+		gap: 1rem;
+		margin-bottom: 2rem;
+		flex-wrap: wrap;
+	}
+	.stat-card {
+		flex: 1;
+		min-width: 140px;
+		background: #f8f8f8;
+		border: 1px solid #e0e0e0;
+		border-radius: 8px;
+		padding: 1rem 1.25rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+	.stat-label {
+		font-size: 0.8rem;
+		color: #666;
+	}
+	.stat-value {
+		font-size: 1.4rem;
+		font-weight: bold;
+	}
+	.table-section {
+		overflow-x: auto;
+	}
+	.empty {
+		color: #888;
+	}
+</style>
