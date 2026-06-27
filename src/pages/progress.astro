@@ -10,44 +10,52 @@ const avgUnderstanding =
 	entries.length > 0
 		? (entries.reduce((sum, e) => sum + e.understanding, 0) / entries.length).toFixed(1)
 		: '—';
+
+// サーバー側で初期データを JSON に変換してクライアントへ渡す
+const initialEntriesJson = JSON.stringify(entries);
 ---
 
 <Layout>
 	<main class="container">
 		<h1>学習進捗ダッシュボード</h1>
 
+		<!-- サマリーカード（JS で動的に更新する） -->
 		<section class="summary">
 			<div class="stat-card">
 				<span class="stat-label">記録件数</span>
-				<span class="stat-value">{entries.length} 件</span>
+				<span class="stat-value" id="stat-count">{entries.length} 件</span>
 			</div>
 			<div class="stat-card">
 				<span class="stat-label">合計学習時間</span>
-				<span class="stat-value">{totalMinutes} 分</span>
+				<span class="stat-value" id="stat-total">{totalMinutes} 分</span>
 			</div>
 			<div class="stat-card">
 				<span class="stat-label">平均理解度</span>
-				<span class="stat-value">{avgUnderstanding} / 5</span>
+				<span class="stat-value" id="stat-avg">{avgUnderstanding} / 5</span>
 			</div>
 		</section>
 
+		<!-- 入力フォーム -->
 		<section class="form-section">
 			<h2>学習記録入力</h2>
-			<form class="entry-form">
+			<form id="entry-form" class="entry-form" novalidate>
 				<div class="form-row">
-					<label for="date">日付</label>
+					<label for="date">日付 <span class="required">*</span></label>
 					<input type="date" id="date" name="date" />
+					<span class="error-msg" id="error-date"></span>
 				</div>
 				<div class="form-row">
-					<label for="theme">学習テーマ</label>
+					<label for="theme">学習テーマ <span class="required">*</span></label>
 					<input type="text" id="theme" name="theme" placeholder="例：Astro入門" />
+					<span class="error-msg" id="error-theme"></span>
 				</div>
 				<div class="form-row">
-					<label for="duration">学習時間（時間）</label>
-					<input type="number" id="duration" name="duration" min="0" step="0.5" placeholder="例：1.5" />
+					<label for="duration">学習時間（時間） <span class="required">*</span></label>
+					<input type="number" id="duration" name="duration" min="0.5" step="0.5" placeholder="例：1.5" />
+					<span class="error-msg" id="error-duration"></span>
 				</div>
 				<div class="form-row">
-					<label for="understanding">理解度（1〜5）</label>
+					<label for="understanding">理解度（1〜5） <span class="required">*</span></label>
 					<select id="understanding" name="understanding">
 						<option value="">選択してください</option>
 						<option value="1">1 ─ ほぼわからなかった</option>
@@ -56,10 +64,12 @@ const avgUnderstanding =
 						<option value="4">4 ─ よく理解できた</option>
 						<option value="5">5 ─ 完全に理解できた</option>
 					</select>
+					<span class="error-msg" id="error-understanding"></span>
 				</div>
 				<div class="form-row">
-					<label for="nextAction">次回やること</label>
+					<label for="nextAction">次回やること <span class="required">*</span></label>
 					<textarea id="nextAction" name="nextAction" rows="3" placeholder="例：ジェネリクスを復習する"></textarea>
+					<span class="error-msg" id="error-nextAction"></span>
 				</div>
 				<div class="form-submit">
 					<button type="submit">学習を記録する</button>
@@ -67,16 +77,142 @@ const avgUnderstanding =
 			</form>
 		</section>
 
+		<!-- 学習記録テーブル（tbody を JS で操作する） -->
 		<section class="table-section">
 			<h2>学習記録</h2>
-			{entries.length > 0 ? (
-				<ProgressTable entries={entries} />
-			) : (
-				<p class="empty">まだ記録がありません。</p>
-			)}
+			<table class="progress-table" id="progress-table">
+				<thead>
+					<tr>
+						<th>日付</th>
+						<th>学習テーマ</th>
+						<th>学習時間</th>
+						<th>理解度</th>
+						<th>次回やること</th>
+					</tr>
+				</thead>
+				<tbody id="progress-tbody">
+					{entries.map((entry) => (
+						<tr>
+							<td>{entry.date}</td>
+							<td>{entry.theme}</td>
+							<td>{entry.durationMinutes}分</td>
+							<td>{'★'.repeat(entry.understanding)}{'☆'.repeat(5 - entry.understanding)}</td>
+							<td>{entry.nextAction}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
 		</section>
 	</main>
 </Layout>
+
+<!-- クライアントサイドのロジック -->
+<script define:vars={{ initialEntriesJson }}>
+	// --- 初期データの読み込み ---
+	// Astro サーバー側で作った JSON をここで受け取る
+	// 将来 AWS に切り替えるときは initialEntriesJson の代わりに fetch() で取得するだけでよい
+	const entries = JSON.parse(initialEntriesJson);
+	let nextId = entries.length + 1;
+
+	// --- DOM 要素の参照 ---
+	const form = document.getElementById('entry-form');
+	const tbody = document.getElementById('progress-tbody');
+	const statCount = document.getElementById('stat-count');
+	const statTotal = document.getElementById('stat-total');
+	const statAvg = document.getElementById('stat-avg');
+
+	// --- バリデーション ---
+	function validate(data) {
+		const errors = {};
+		if (!data.date) errors.date = '日付を入力してください';
+		if (!data.theme.trim()) errors.theme = '学習テーマを入力してください';
+		if (!data.duration || data.duration <= 0) errors.duration = '学習時間を入力してください';
+		if (!data.understanding) errors.understanding = '理解度を選択してください';
+		if (!data.nextAction.trim()) errors.nextAction = '次回やることを入力してください';
+		return errors;
+	}
+
+	function showErrors(errors) {
+		['date', 'theme', 'duration', 'understanding', 'nextAction'].forEach((field) => {
+			const el = document.getElementById(`error-${field}`);
+			const input = document.getElementById(field);
+			if (errors[field]) {
+				el.textContent = errors[field];
+				input.classList.add('input-error');
+			} else {
+				el.textContent = '';
+				input.classList.remove('input-error');
+			}
+		});
+	}
+
+	// --- テーブル行の生成 ---
+	function createRow(entry) {
+		const stars = '★'.repeat(entry.understanding) + '☆'.repeat(5 - entry.understanding);
+		const tr = document.createElement('tr');
+		tr.innerHTML = `
+			<td>${entry.date}</td>
+			<td>${entry.theme}</td>
+			<td>${entry.durationMinutes}分</td>
+			<td>${stars}</td>
+			<td>${entry.nextAction}</td>
+		`;
+		return tr;
+	}
+
+	// --- サマリーの再計算 ---
+	function updateSummary() {
+		const count = entries.length;
+		const totalMinutes = entries.reduce((sum, e) => sum + e.durationMinutes, 0);
+		const avg = count > 0
+			? (entries.reduce((sum, e) => sum + e.understanding, 0) / count).toFixed(1)
+			: '—';
+		statCount.textContent = `${count} 件`;
+		statTotal.textContent = `${totalMinutes} 分`;
+		statAvg.textContent = `${avg} / 5`;
+	}
+
+	// --- フォーム送信 ---
+	form.addEventListener('submit', (e) => {
+		e.preventDefault();
+
+		const data = {
+			date: form.date.value,
+			theme: form.theme.value,
+			duration: parseFloat(form.duration.value),
+			understanding: parseInt(form.understanding.value, 10),
+			nextAction: form.nextAction.value,
+		};
+
+		const errors = validate(data);
+		showErrors(errors);
+		if (Object.keys(errors).length > 0) return;
+
+		// 新しいエントリを作成（学習時間は分に変換して保持）
+		const newEntry = {
+			id: String(nextId++),
+			date: data.date,
+			theme: data.theme,
+			durationMinutes: Math.round(data.duration * 60),
+			understanding: data.understanding,
+			nextAction: data.nextAction,
+		};
+
+		// ブラウザメモリの配列へ追加
+		// 将来はここを fetch('/api/progress', { method: 'POST', body: JSON.stringify(newEntry) }) に差し替える
+		entries.push(newEntry);
+
+		// テーブルの末尾に行を追加
+		tbody.appendChild(createRow(newEntry));
+
+		// サマリーを更新
+		updateSummary();
+
+		// フォームをリセット
+		form.reset();
+		showErrors({});
+	});
+</script>
 
 <style>
 	.container {
@@ -140,6 +276,9 @@ const avgUnderstanding =
 		font-weight: bold;
 		color: #444;
 	}
+	.required {
+		color: #e53e3e;
+	}
 	.form-row input,
 	.form-row select,
 	.form-row textarea {
@@ -154,6 +293,14 @@ const avgUnderstanding =
 	}
 	.form-row textarea {
 		resize: vertical;
+	}
+	.input-error {
+		border-color: #e53e3e !important;
+	}
+	.error-msg {
+		font-size: 0.8rem;
+		color: #e53e3e;
+		min-height: 1rem;
 	}
 	.form-submit {
 		text-align: right;
@@ -173,7 +320,22 @@ const avgUnderstanding =
 	.table-section {
 		overflow-x: auto;
 	}
-	.empty {
-		color: #888;
+	.progress-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.95rem;
+	}
+	.progress-table th,
+	.progress-table td {
+		border: 1px solid #ddd;
+		padding: 0.6rem 0.8rem;
+		text-align: left;
+		vertical-align: top;
+	}
+	.progress-table th {
+		background-color: #f5f5f5;
+	}
+	.progress-table tr:nth-child(even) {
+		background-color: #fafafa;
 	}
 </style>
